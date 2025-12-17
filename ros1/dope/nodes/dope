@@ -225,8 +225,10 @@ class DopeNode(object):
         """Image callback"""
 
         img = self.cv_bridge.imgmsg_to_cv2(image_msg, "rgb8")
-        # cv2.imwrite('img.png', cv2.cvtColor(img, cv2.COLOR_BGR2RGB))  # for debugging
+        
+        #cv2.imwrite('img.png', cv2.cvtColor(img, cv2.COLOR_BGR2RGB))  # for debugging
 
+        rospy.loginfo("Received image of size: %dx%d and instance of ndarray: %s", img.shape[1], img.shape[0], isinstance(img, np.ndarray))
         # Update camera matrix and distortion coefficients
         if self.input_is_rectified:
             P = np.matrix(camera_info.P, dtype='float64')
