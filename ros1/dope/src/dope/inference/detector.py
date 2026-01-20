@@ -8,6 +8,7 @@ Contains the following classes:
    - ObjectDetector - Greedy algorithm to build cuboids from belief maps 
 '''
 
+import linecache
 import time
 from os import path
 
@@ -198,11 +199,12 @@ class DopeNetwork(nn.Module):
 class ModelData(object):
     '''This class contains methods for loading the neural network'''
 
-    def __init__(self, name="", net_path="", gpu_id=0):
+    def __init__(self, name="", net_path="", gpu_id=0,device=None):
         self.name = name
         self.net_path = net_path  # Path to trained network model
         self.net = None  # Trained network
         self.gpu_id = gpu_id
+        self.device = torch.device(device)
 
     def get_net(self):
         '''Returns network'''
@@ -224,8 +226,20 @@ class ModelData(object):
         model_loading_start_time = time.time()
         print("Loading DOPE model '{}'...".format(path))
         net = DopeNetwork()
-        net = torch.nn.DataParallel(net, [0]).cpu()
-        net.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
+        state = torch.load(path, map_location="cpu")
+        if isinstance(state, dict) and "state_dict" in state:
+            state = state["state_dict"]
+        state_has_module = any(k.startswith("module.") for k in state.keys())
+        if self.device.type == "cuda":
+            net = torch.nn.DataParallel(net, device_ids=[0])
+        else:
+            # strip module for loading on CPU without DataParallel
+            if state_has_module:
+                state = {k.replace("module.", "", 1): v for k, v in state.items()}
+        net.load_state_dict(state)
+        net=net.to(self.device)    
+        #net.load_state_dict(torch.load(path, map_location=torch.device(self.device)))
+        
         net.eval()
         print('    Model loaded in {} seconds.'.format(
             time.time() - model_loading_start_time))
@@ -252,7 +266,8 @@ class ObjectDetector(object):
 
         # Run network inference
         image_tensor = transform(in_img)
-        image_torch = Variable(image_tensor).cpu().unsqueeze(0)
+        device = next(net_model.parameters()).device
+        image_torch = image_tensor.unsqueeze(0).to(device)
         out, seg = net_model(image_torch)
         vertex2 = out[-1][0]
         aff = seg[-1][0]
