@@ -227,18 +227,11 @@ class ModelData(object):
         print("Loading DOPE model '{}'...".format(path))
         net = DopeNetwork()
         state = torch.load(path, map_location="cpu")
-        if isinstance(state, dict) and "state_dict" in state:
-            state = state["state_dict"]
-        state_has_module = any(k.startswith("module.") for k in state.keys())
-        if self.device.type == "cuda":
-            net = torch.nn.DataParallel(net, device_ids=[0])
-        else:
-            # strip module for loading on CPU without DataParallel
-            if state_has_module:
-                state = {k.replace("module.", "", 1): v for k, v in state.items()}
+        net = torch.nn.DataParallel(net, device_ids=[0])
         net.load_state_dict(state)
-        net=net.to(self.device)    
-        #net.load_state_dict(torch.load(path, map_location=torch.device(self.device)))
+        if self.device.type == "cpu":
+            net = net.module.to(self.device)  
+
         
         net.eval()
         print('    Model loaded in {} seconds.'.format(
@@ -252,6 +245,7 @@ class ModelData(object):
 
 #================================ ObjectDetector ================================
 class ObjectDetector(object):
+
     '''This class contains methods for object detection'''
 
     @staticmethod

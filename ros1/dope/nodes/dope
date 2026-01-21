@@ -430,10 +430,7 @@ def main():
     DopeNode()
 
     try:
-        print("hello", rospy.is_shutdown())
-
         rospy.spin()
-        print("bye", rospy.is_shutdown())
     except rospy.ROSInterruptException:
         pass
 
