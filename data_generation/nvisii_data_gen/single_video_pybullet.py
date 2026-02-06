@@ -149,7 +149,26 @@ parser.add_argument(
     default=False,
     help="Render the cuboid corners as small spheres. Only for debugging purposes, do not use for training!"
 )
-
+parser.add_argument(
+    '--override_object_texture_with_random_discrete_solid_colors',
+    default=None,
+    type=lambda s: [tuple(map(int, item.split(','))) for item in s.split(';')],
+    help=(
+        "Override the object texture with solid RGB colors. "
+        "Format: R,G,B;R,G,B;R,G,B (values 0–255). "
+        "Example: 139,69,19;160,82,45"
+    )
+)
+parser.add_argument(
+    '--object_roughness',
+    default=(0.7, 0.9),
+    type=lambda s: tuple(map(float, s.split(','))),
+    help=(
+        "Range of roughness values for the objects. "
+        "Format: min,max (values 0–1). "
+        "Example: 0.1,0.5"
+    )
+)
 opt = parser.parse_args()
 
 # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -277,7 +296,36 @@ def adding_mesh_object(
     # obj_to_load = toy_to_load + "/meshes/model.obj"
     # texture_to_load = toy_to_load + "/materials/textures/texture.png"
 
-    if texture_to_load is None:
+    roughness = random.uniform(opt.object_roughness[0], opt.object_roughness[1])
+
+    if opt.override_object_texture_with_random_discrete_solid_colors and name.startswith("single_obj"):
+        color_choice = random.choice(opt.override_object_texture_with_random_discrete_solid_colors)
+        color = visii.vec3(
+            color_choice[0] / 255.0,
+            color_choice[1] / 255.0,
+            color_choice[2] / 255.0,
+        )
+
+        toys = [name]
+
+        if obj_to_load in mesh_loaded:
+            toy_mesh = mesh_loaded[obj_to_load]
+        else:
+            toy_mesh = visii.mesh.create_from_file(name, obj_to_load)
+            mesh_loaded[obj_to_load] = toy_mesh
+
+        toy = visii.entity.create(
+            name=name,
+            transform=visii.transform.create(name),
+            mesh=toy_mesh,
+            material=visii.material.create(name)
+        )
+
+        toy.get_material().set_base_color(color)
+        toy.get_material().set_roughness(roughness)
+
+        toy_transform = toy.get_transform()
+    elif texture_to_load is None:
         toys = load_obj_scene(obj_to_load)
         if len(toys) > 1: 
             print("more than one model in the object, \
@@ -299,7 +347,7 @@ def adding_mesh_object(
             )
 
         toy_transform = obj_export.get_transform()
-        obj_export.get_material().set_roughness(random.uniform(0.1, 0.5))
+        obj_export.get_material().set_roughness(roughness)
 
         for toy in toys:
             visii.entity.remove(toy)
@@ -323,7 +371,7 @@ def adding_mesh_object(
 
         toy_rgb_tex = visii.texture.create_from_file(name, texture_to_load)
         toy.get_material().set_base_color_texture(toy_rgb_tex)
-        toy.get_material().set_roughness(random.uniform(0.1, 0.5))
+        toy.get_material().set_roughness(roughness)
 
         toy_transform = toy.get_transform()
 
