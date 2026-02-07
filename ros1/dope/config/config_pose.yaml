@@ -1,23 +1,24 @@
-topic_camera: "/dope/webcam/image_raw"
-topic_camera_info: "/dope/webcam/camera_info"
+topic_camera: "/realsense/color/image_raw"
+topic_camera_info: "/realsense/color/camera_info"
 topic_publishing: "dope"
 input_is_rectified: True   # Whether the input image is rectified (strongly suggested!)
-downscale_height: 400      # if the input image is larger than this, scale it down to this pixel height
-
+downscale_height: 500      # if the input image is larger than this, scale it down to this pixel height
+device: "cpu"          # device to run inference on: "cuda" or "cpu"
 # Comment any of these lines to prevent detection / pose estimation of that object
 weights: {
-    # "cracker":"package://dope/weights/cracker_60.pth",
+    #"cracker":"package://dope/weights/cracker_60.pth",
+    "BlackBlock":"package://dope/weights/BlackBlock.pth",
     # "gelatin":"package://dope/weights/gelatin_60.pth",
     # "meat":"package://dope/weights/meat_20.pth",
     # "mustard":"package://dope/weights/mustard_60.pth",
-    "soup":"package://dope/weights/soup_60.pth",
+    # "soup":"package://dope/weights/soup_60.pth",
     #"sugar":"package://dope/weights/sugar_60.pth",
     # "bleach":"package://dope/weights/bleach_28_dr.pth"
     
     # NEW OBJECTS - HOPE
     # "AlphabetSoup":"package://dope/weights/AlphabetSoup.pth", 
     # "BBQSauce":"package://dope/weights/BBQSauce.pth", 
-    # "Butter":"package://dope/weights/Butter.pth", 
+    #"Butter":"package://dope/weights/Butter.pth", 
     # "Cherries":"package://dope/weights/Cherries.pth", 
     # "ChocolatePudding":"package://dope/weights/ChocolatePudding.pth", 
     # "Cookies":"package://dope/weights/Cookies.pth", 
@@ -49,7 +50,7 @@ weights: {
 # Cuboid dimension in cm x,y,z
 dimensions: {
     "cracker": [16.403600692749023,21.343700408935547,7.179999828338623],
-    "gelatin": [8.918299674987793, 7.311500072479248, 2.9983000755310059],
+    "BlackBlock": [5.0, 2.5, 2.5],
     "meat": [10.164673805236816,8.3542995452880859,5.7600898742675781],
     "mustard": [9.6024150848388672,19.130100250244141,5.824894905090332],
     "soup": [6.7659378051757813,10.185500144958496,6.771425724029541],
@@ -122,7 +123,8 @@ class_ids: {
     "GranolaBars"       : 33, 
     "Peaches"           : 34,
     "GreenBeans"        : 35, 
-    "PeasAndCarrots"    : 36 
+    "PeasAndCarrots"    : 36,
+    "BlackBlock"        : 37,
 }
 
 draw_colors: {
@@ -133,6 +135,7 @@ draw_colors: {
     "soup": [255, 101, 0],  # orange
     "sugar": [232, 222, 12],  # yellow
     "bleach": [232, 222, 12],  # yellow
+    "BlackBlock": [0, 0, 0],  # black
 }
 
 # optional: provide a transform that is applied to the pose returned by DOPE
@@ -143,7 +146,7 @@ model_transforms: {
 #                [ 0,  0,  0,  1]]
 }
 
-# optional: if you provide a mesh of the object here, a mesh marker will be
+# optional: if you provide a mdeviceesh of the object here, a mesh marker will be
 # published for visualization in RViz
 # You can use the nvdu_ycb tool to download the meshes: https://github.com/NVIDIA/Dataset_Utilities#nvdu_ycb
 meshes: {
@@ -171,6 +174,6 @@ overlay_belief_images: True   # Whether to overlay the input image on the belief
 
 # Config params for DOPE
 thresh_angle: 0.5
-thresh_map: 0.01
+thresh_map: 0.003
 sigma: 3
-thresh_points: 0.1
+thresh_points: 0.01

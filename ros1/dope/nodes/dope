@@ -123,13 +123,14 @@ class DopeNode(object):
         self.config_detect.thresh_map = rospy.get_param('~thresh_map', 0.01)
         self.config_detect.sigma = rospy.get_param('~sigma', 3)
         self.config_detect.thresh_points = rospy.get_param("~thresh_points", 0.1)
-
+        self.device=rospy.get_param('~device', 'cuda')
         # For each object to detect, load network model, create PNP solver, and start ROS publishers
         for model, weights_url in rospy.get_param('~weights').items():
             self.models[model] = \
                 ModelData(
                     model,
-                    resource_retriever.get_filename(weights_url, use_protocol=False)
+                    resource_retriever.get_filename(weights_url, use_protocol=False),
+                    device=self.device
                 )
             self.models[model].load_net_model()
 
@@ -225,7 +226,8 @@ class DopeNode(object):
         """Image callback"""
 
         img = self.cv_bridge.imgmsg_to_cv2(image_msg, "rgb8")
-        # cv2.imwrite('img.png', cv2.cvtColor(img, cv2.COLOR_BGR2RGB))  # for debugging
+        
+        #cv2.imwrite('img.png', cv2.cvtColor(img, cv2.COLOR_BGR2RGB))  # for debugging
 
         # Update camera matrix and distortion coefficients
         if self.input_is_rectified:
@@ -268,7 +270,7 @@ class DopeNode(object):
                 img,
                 self.config_detect,
                 make_belief_debug_img=publish_belief_img,
-                overlay_image=self.overlay_belief_images
+                overlay_image=self.overlay_belief_images,
             )
 
             # Publish pose and overlay cube on image
