@@ -154,7 +154,7 @@ parser.add_argument(
     default=None,
     type=lambda s: [tuple(map(int, item.split(','))) for item in s.split(';')],
     help=(
-        "Override the object texture with solid RGB colors. "
+        "Override the object texture with solid sRGB colors. "
         "Format: R,G,B;R,G,B;R,G,B (values 0–255). "
         "Example: 139,69,19;160,82,45"
     )
@@ -282,6 +282,58 @@ else:
 
 visii_pybullet = []
 names_to_export = []
+random_color_entities = []
+
+
+def _pick_random_discrete_color_vec3():
+    color_choice = random.choice(opt.override_object_texture_with_random_discrete_solid_colors)
+    return _srgb_to_linear_vec3(
+        color_choice[0] / 255.0,
+        color_choice[1] / 255.0,
+        color_choice[2] / 255.0,
+    )
+
+
+def _srgb_to_linear_channel(c):
+    if c <= 0.04045:
+        return c / 12.92
+    return ((c + 0.055) / 1.055) ** 2.4
+
+
+def _srgb_to_linear_vec3(r, g, b):
+    return visii.vec3(
+        _srgb_to_linear_channel(r),
+        _srgb_to_linear_channel(g),
+        _srgb_to_linear_channel(b),
+    )
+
+
+def _randomize_entity_colors():
+    if not opt.override_object_texture_with_random_discrete_solid_colors:
+        return
+    for entity_name in random_color_entities:
+        visii.entity.get(entity_name).get_material().set_base_color(
+            _pick_random_discrete_color_vec3()
+        )
+
+
+def _has_visible_target(segmentation_mask, target_names):
+    if segmentation_mask is None or not target_names:
+        return False
+    # Some early frames can contain NaNs; sanitize to avoid warnings on cast.
+    segmentation_mask = np.nan_to_num(
+        segmentation_mask, nan=-1.0, posinf=-1.0, neginf=-1.0
+    )
+    visible_object_ids = np.unique(segmentation_mask.astype(int))
+    id_keys_map = visii.entity.get_name_to_id_map()
+    for obj_name in target_names:
+        try:
+            obj_id = id_keys_map[obj_name]
+        except Exception:
+            continue
+        if int(obj_id) in visible_object_ids:
+            return True
+    return False
 
 
 def adding_mesh_object(
@@ -299,12 +351,7 @@ def adding_mesh_object(
     roughness = random.uniform(opt.object_roughness[0], opt.object_roughness[1])
 
     if opt.override_object_texture_with_random_discrete_solid_colors and name.startswith("single_obj"):
-        color_choice = random.choice(opt.override_object_texture_with_random_discrete_solid_colors)
-        color = visii.vec3(
-            color_choice[0] / 255.0,
-            color_choice[1] / 255.0,
-            color_choice[2] / 255.0,
-        )
+        color = _pick_random_discrete_color_vec3()
 
         toys = [name]
 
@@ -323,6 +370,7 @@ def adding_mesh_object(
 
         toy.get_material().set_base_color(color)
         toy.get_material().set_roughness(roughness)
+        random_color_entities.append(name)
 
         toy_transform = toy.get_transform()
     elif texture_to_load is None:
@@ -565,6 +613,10 @@ export_to_ndds_folder_settings_files(
     camera_name='camera',
 )
 
+target_names_for_visibility = [name for name in names_to_export if name.startswith("single_obj")]
+if not target_names_for_visibility:
+    target_names_for_visibility = list(names_to_export)
+
 i_frame = -1
 i_render = 0
 
@@ -611,7 +663,27 @@ while True:
         if not i_frame % int(opt.skip_frame) == 0:
             continue
 
+        _randomize_entity_colors()
+
         print(f"{str(i_render).zfill(5)}/{str(opt.nb_frames).zfill(5)}")
+
+        visii.sample_pixel_area(
+            x_sample_interval = (.5,.5),
+            y_sample_interval = (.5,.5))
+
+        visii.sample_time_interval((1,1))
+
+        segmentation_mask = visii.render_data(
+            width=int(opt.width),
+            height=int(opt.height),
+            start_frame=0,
+            frame_count=1,
+            bounce=int(0),
+            options="entity_id",
+        )
+        segmentation_mask = np.array(segmentation_mask).reshape((opt.height, opt.width, 4))[:, :, 0]
+        if not _has_visible_target(segmentation_mask, target_names_for_visibility):
+            continue
 
         visii.sample_pixel_area(
             x_sample_interval = (0,1),
@@ -638,15 +710,6 @@ while True:
             options="entity_id",
             file_path = f"{opt.outf}/{str(i_render).zfill(5)}.seg.exr"
         )
-        segmentation_mask = visii.render_data(
-            width=int(opt.width),
-            height=int(opt.height),
-            start_frame=0,
-            frame_count=1,
-            bounce=int(0),
-            options="entity_id",
-        )
-        segmentation_mask = np.array(segmentation_mask).reshape((opt.height, opt.width, 4))[:, :, 0]
         export_to_ndds_file(
             f"{opt.outf}/{str(i_render).zfill(5)}.json",
             obj_names = names_to_export,
