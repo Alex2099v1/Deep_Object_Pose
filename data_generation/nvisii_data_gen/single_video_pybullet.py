@@ -317,23 +317,6 @@ def _randomize_entity_colors():
         )
 
 
-def _has_visible_target(segmentation_mask, target_names):
-    if segmentation_mask is None or not target_names:
-        return False
-    # Some early frames can contain NaNs; sanitize to avoid warnings on cast.
-    segmentation_mask = np.nan_to_num(
-        segmentation_mask, nan=-1.0, posinf=-1.0, neginf=-1.0
-    )
-    visible_object_ids = np.unique(segmentation_mask.astype(int))
-    id_keys_map = visii.entity.get_name_to_id_map()
-    for obj_name in target_names:
-        try:
-            obj_id = id_keys_map[obj_name]
-        except Exception:
-            continue
-        if int(obj_id) in visible_object_ids:
-            return True
-    return False
 
 
 def adding_mesh_object(
@@ -613,10 +596,6 @@ export_to_ndds_folder_settings_files(
     camera_name='camera',
 )
 
-target_names_for_visibility = [name for name in names_to_export if name.startswith("single_obj")]
-if not target_names_for_visibility:
-    target_names_for_visibility = list(names_to_export)
-
 i_frame = -1
 i_render = 0
 
@@ -668,24 +647,6 @@ while True:
         print(f"{str(i_render).zfill(5)}/{str(opt.nb_frames).zfill(5)}")
 
         visii.sample_pixel_area(
-            x_sample_interval = (.5,.5),
-            y_sample_interval = (.5,.5))
-
-        visii.sample_time_interval((1,1))
-
-        segmentation_mask = visii.render_data(
-            width=int(opt.width),
-            height=int(opt.height),
-            start_frame=0,
-            frame_count=1,
-            bounce=int(0),
-            options="entity_id",
-        )
-        segmentation_mask = np.array(segmentation_mask).reshape((opt.height, opt.width, 4))[:, :, 0]
-        if not _has_visible_target(segmentation_mask, target_names_for_visibility):
-            continue
-
-        visii.sample_pixel_area(
             x_sample_interval = (0,1),
             y_sample_interval = (0,1))
 
@@ -700,6 +661,16 @@ while True:
             y_sample_interval = (.5,.5))
 
         visii.sample_time_interval((1,1))
+
+        segmentation_mask = visii.render_data(
+            width=int(opt.width),
+            height=int(opt.height),
+            start_frame=0,
+            frame_count=1,
+            bounce=int(0),
+            options="entity_id",
+        )
+        segmentation_mask = np.array(segmentation_mask).reshape((opt.height, opt.width, 4))[:, :, 0]
 
         visii.render_data_to_file(
             width=opt.width,
