@@ -18,7 +18,6 @@ import time
 
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
 from torch.autograd import Variable
 import torchvision.models as models
 
@@ -27,17 +26,7 @@ sys.path.append("../")
 from models import *
 # Import the definition of the neural network model and cuboids
 from cuboid_pnp_solver import *
-
-
-# global transform for image input
-transform = transforms.Compose(
-    [
-        # transforms.Scale(IMAGE_SIZE),
-        # transforms.CenterCrop((imagesize,imagesize)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-    ]
-)
+from preprocessing import ensure_rgb_uint8, to_model_tensor
 
 
 # ================================ Models ================================
@@ -468,10 +457,11 @@ class ObjectDetector(object):
         if in_img is None:
             return []
 
+        in_img = ensure_rgb_uint8(in_img)
         print("detect_object_in_image - image shape: {}".format(in_img.shape))
 
         # Run network inference
-        image_tensor = transform(in_img)
+        image_tensor = to_model_tensor(in_img)
         image_torch = Variable(image_tensor).cuda().unsqueeze(0)
         out, seg = net_model(
             image_torch

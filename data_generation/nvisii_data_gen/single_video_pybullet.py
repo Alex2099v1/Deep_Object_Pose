@@ -20,6 +20,15 @@ from utils import *
 
 parser = argparse.ArgumentParser()
 
+
+def _parse_float_tuple(value, expected_len, arg_name):
+    values = tuple(map(float, value.split(',')))
+    if len(values) != expected_len:
+        raise argparse.ArgumentTypeError(
+            f"{arg_name} expects {expected_len} comma-separated values, got {len(values)}."
+        )
+    return values
+
 parser.add_argument(
     '--spp',
     default=800,
@@ -150,18 +159,27 @@ parser.add_argument(
     help="Render the cuboid corners as small spheres. Only for debugging purposes, do not use for training!"
 )
 parser.add_argument(
-    '--override_object_texture_with_random_discrete_solid_colors',
-    default=None,
-    type=lambda s: [tuple(map(int, item.split(','))) for item in s.split(';')],
+    '--randomize_object_solid_colors',
+    action='store_true',
+    default=False,
     help=(
-        "Override the object texture with solid sRGB colors. "
-        "Format: R,G,B;R,G,B;R,G,B (values 0–255). "
-        "Example: 139,69,19;160,82,45"
-    )
+        "Override target object textures with a continuous random color sample in HSV "
+        "space for each rendered frame."
+    ),
+)
+parser.add_argument(
+    '--object_color_hsv_range',
+    default=(0.0, 1.0, 0.25, 0.9, 0.2, 0.95),
+    type=lambda s: _parse_float_tuple(s, 6, "--object_color_hsv_range"),
+    help=(
+        "HSV sampling ranges for object color randomization. "
+        "Format: h_min,h_max,s_min,s_max,v_min,v_max with each value in [0,1]. "
+        "Example: 0.0,1.0,0.2,0.9,0.3,0.95"
+    ),
 )
 parser.add_argument(
     '--object_roughness',
-    default=(0.7, 0.9),
+    default=(0.4, 0.95),
     type=lambda s: tuple(map(float, s.split(','))),
     help=(
         "Range of roughness values for the objects. "
@@ -248,19 +266,22 @@ visii.set_camera_entity(camera)
 # lets turn off the ambiant lights
 # load a random skybox
 skyboxes = glob.glob(f'{opt.skyboxes_folder}/*.hdr')
-skybox_random_selection = skyboxes[random.randint(0,len(skyboxes)-1)]
+if len(skyboxes) == 0:
+    raise RuntimeError(f"No HDR files found in skybox folder: {opt.skyboxes_folder}")
 
-dome_tex = visii.texture.create_from_file('dome_tex',skybox_random_selection)
-visii.set_dome_light_texture(dome_tex)
-visii.set_dome_light_intensity(random.uniform(1.1,2))
-# visii.set_dome_light_intensity(1.15)
-visii.set_dome_light_rotation(
-    # visii.angleAxis(visii.pi()/2,visii.vec3(1,0,0)) \
-    # * visii.angleAxis(visii.pi()/2,visii.vec3(0,0,1))\
-    visii.angleAxis(random.uniform(-visii.pi(),visii.pi()),visii.vec3(0,0,1))\
-    # * visii.angleAxis(visii.pi()/2,visii.vec3(0,1,0))\
-    # * visii.angleAxis(random.uniform(-visii.pi()/8,visii.pi()/8),visii.vec3(0,0,1))\
-)
+dome_textures = {}
+for i_skybox, skybox_path in enumerate(skyboxes):
+    texture_name = f'dome_tex_{i_skybox}'
+    dome_textures[skybox_path] = visii.texture.create_from_file(texture_name, skybox_path)
+
+
+def _randomize_dome_lighting():
+    skybox_random_selection = random.choice(skyboxes)
+    visii.set_dome_light_texture(dome_textures[skybox_random_selection])
+    visii.set_dome_light_intensity(random.uniform(1.1, 2.0))
+    visii.set_dome_light_rotation(
+        visii.angleAxis(random.uniform(-visii.pi(), visii.pi()), visii.vec3(0, 0, 1))
+    )
 
 # # # # # # # # # # # # # # # # # # # # # # # # #
 # Lets set some objects in the scene
@@ -285,12 +306,16 @@ names_to_export = []
 random_color_entities = []
 
 
-def _pick_random_discrete_color_vec3():
-    color_choice = random.choice(opt.override_object_texture_with_random_discrete_solid_colors)
+def _pick_random_continuous_color_vec3():
+    h_min, h_max, s_min, s_max, v_min, v_max = opt.object_color_hsv_range
+    hue = random.uniform(h_min, h_max)
+    sat = random.uniform(s_min, s_max)
+    val = random.uniform(v_min, v_max)
+    color_choice = colorsys.hsv_to_rgb(hue, sat, val)
     return _srgb_to_linear_vec3(
-        color_choice[0] / 255.0,
-        color_choice[1] / 255.0,
-        color_choice[2] / 255.0,
+        color_choice[0],
+        color_choice[1],
+        color_choice[2],
     )
 
 
@@ -309,12 +334,15 @@ def _srgb_to_linear_vec3(r, g, b):
 
 
 def _randomize_entity_colors():
-    if not opt.override_object_texture_with_random_discrete_solid_colors:
-        return
     for entity_name in random_color_entities:
-        visii.entity.get(entity_name).get_material().set_base_color(
-            _pick_random_discrete_color_vec3()
-        )
+        entity = visii.entity.get(entity_name)
+        material = entity.get_material()
+        material.set_base_color(_pick_random_continuous_color_vec3())
+        material.set_roughness(random.uniform(opt.object_roughness[0], opt.object_roughness[1]))
+
+
+def _is_target_object(name):
+    return name.startswith("single_obj") or name.startswith("hope_")
 
 
 
@@ -333,9 +361,7 @@ def adding_mesh_object(
 
     roughness = random.uniform(opt.object_roughness[0], opt.object_roughness[1])
 
-    if opt.override_object_texture_with_random_discrete_solid_colors and name.startswith("single_obj"):
-        color = _pick_random_discrete_color_vec3()
-
+    if opt.randomize_object_solid_colors and _is_target_object(name):
         toys = [name]
 
         if obj_to_load in mesh_loaded:
@@ -350,11 +376,9 @@ def adding_mesh_object(
             mesh=toy_mesh,
             material=visii.material.create(name)
         )
-
-        toy.get_material().set_base_color(color)
+        toy.get_material().set_base_color(_pick_random_continuous_color_vec3())
         toy.get_material().set_roughness(roughness)
         random_color_entities.append(name)
-
         toy_transform = toy.get_transform()
     elif texture_to_load is None:
         toys = load_obj_scene(obj_to_load)
@@ -642,6 +666,7 @@ while True:
         if not i_frame % int(opt.skip_frame) == 0:
             continue
 
+        _randomize_dome_lighting()
         _randomize_entity_colors()
 
         print(f"{str(i_render).zfill(5)}/{str(opt.nb_frames).zfill(5)}")

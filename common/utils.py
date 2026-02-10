@@ -21,6 +21,7 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 
 from cuboid import CuboidVertexType, CuboidLineIndexes
+from preprocessing import to_model_tensor, to_rgb_tensor
 
 def default_loader(path):
     return Image.open(path).convert("RGB")
@@ -340,9 +341,13 @@ class CleanVisiiDopeLoader(data.Dataset):
                 A.RandomCrop(width=400, height=400),
                 A.Rotate(limit=180),
                 A.RandomBrightnessContrast(
-                    brightness_limit=0.2, contrast_limit=0.15, p=1
+                    brightness_limit=0.2, contrast_limit=0.2, p=0.75
                 ),
-                A.GaussNoise(p=1),
+                A.HueSaturationValue(
+                    hue_shift_limit=10, sat_shift_limit=25, val_shift_limit=0, p=0.75
+                ),
+                A.RandomGamma(gamma_limit=(80, 130), p=0.6),
+                A.GaussNoise(p=0.3),
             ],
             keypoint_params=A.KeypointParams(format="xy", remove_invisible=False),
         )
@@ -417,20 +422,9 @@ class CleanVisiiDopeLoader(data.Dataset):
             scale=1,
         )
 
-        # prepare for the image tensors
-        normalize_tensor = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-            ]
-        )
-        to_tensor = transforms.Compose(
-            [
-                transforms.ToTensor(),
-            ]
-        )
-        img_tensor = normalize_tensor(Image.fromarray(img_transformed))
-        img_original = to_tensor(img_transformed)
+        # prepare for the image tensors with the same preprocessing as inference
+        img_tensor = to_model_tensor(img_transformed)
+        img_original = to_rgb_tensor(img_transformed)
 
         ########
         if self.debug:
